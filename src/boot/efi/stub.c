@@ -13,6 +13,7 @@
 #include "part-discovery.h"
 #include "pe.h"
 #include "proto/shell-parameters.h"
+#include "qemufwcfg.h"
 #include "random-seed.h"
 #include "sbat.h"
 #include "secure-boot.h"
@@ -1008,6 +1009,35 @@ static EFI_STATUS run(EFI_HANDLE image) {
                         (const uint8_t*) loaded_image->ImageBase + sections[UNIFIED_SECTION_LINUX].memory_offset,
                         sections[UNIFIED_SECTION_LINUX].size);
 
+#if defined(__x86_64__)
+        if (PE_SECTION_VECTOR_IS_SET(sections + UNIFIED_SECTION_FIRMWARE)) {
+                FIRMWARE_CONFIG_ITEM  FwCfgItem;
+                size_t                FwCfgSize;
+
+                log_error("firmware section found!");
+
+                if (QemuFwCfgIsAvailable()) {
+                        if (QemuFwCfgFindFile("etc/fwupdate-control", &FwCfgItem, &FwCfgSize) ==
+                            EFI_SUCCESS) {
+                                struct iovec firmware = IOVEC_MAKE(
+                                                (const uint8_t *) loaded_image->ImageBase +
+                                                                sections[UNIFIED_SECTION_FIRMWARE]
+                                                                                .memory_offset,
+                                                sections[UNIFIED_SECTION_FIRMWARE].size);
+
+                                err = linux_exec_efi_fw_replace(
+                                                image, cmdline, &kernel, &final_initrd, &firmware);
+                                return err;
+                        } else {
+                                log_error("QemuFwCfgFindFile (\"etc/fwupdate-control\") != EFI_SUCCESS");
+                                freeze();
+                        }
+                } else {
+                        log_error("qemufwcfg not available");
+                }
+                freeze();
+        }
+#endif
         err = linux_exec(image, cmdline, &kernel, &final_initrd);
         graphics_mode(false);
         return err;

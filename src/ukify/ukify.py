@@ -306,6 +306,7 @@ DEFAULT_SECTIONS_TO_SHOW = {
         '.ucode'    : 'binary',
         '.splash'   : 'binary',
         '.dtb'      : 'binary',
+        '.fmwimg' : 'binary',
         '.cmdline'  : 'text',
         '.osrel'    : 'text',
         '.uname'    : 'text',
@@ -856,6 +857,7 @@ def make_uki(opts):
         ('.splash',  opts.splash,     True ),
         ('.pcrpkey', pcrpkey,         True ),
         ('.initrd',  initrd,          True ),
+        ('.fmwimg',  opts.firmware,   True ),
         ('.ucode',   opts.microcode,  True ),
 
         # linux shall be last to leave breathing room for decompression.
@@ -1316,6 +1318,14 @@ CONFIG_ITEMS = [
         type = pathlib.Path,
         help = 'splash image bitmap file [.splash section]',
         config_key = 'UKI/Splash',
+    ),
+
+    ConfigItem(
+        '--firmware',
+        metavar = 'PATH',
+        type = pathlib.Path,
+        help = 'firmware file [.fmwimg section]',
+        config_key = 'UKI/Firmware',
     ),
 
     ConfigItem(

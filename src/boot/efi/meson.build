@@ -296,6 +296,8 @@ endif
 
 if host_machine.cpu_family() in ['x86', 'x86_64']
         stub_sources += files('linux_x86.c')
+        stub_sources += files('qemufwcfg.c')
+        stub_sources += files('linux_fw_replace.c')
 endif
 
 # BCD parser only makes sense on arches that Windows supports.
