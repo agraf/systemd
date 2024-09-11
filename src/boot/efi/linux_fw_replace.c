@@ -76,6 +76,47 @@ typedef struct FwCfgVmFwUpdateBlob {
                                 */
 } FwCfgVmFwUpdateBlob;
 
+struct kvm_regs {
+        uint64_t rax, rbx, rcx, rdx;
+        uint64_t rsi, rdi, rsp, rbp;
+        uint64_t r8,  r9,  r10, r11;
+        uint64_t r12, r13, r14, r15;
+        uint64_t rip, rflags;
+};
+
+struct kvm_segment {
+        uint64_t base;
+        uint32_t limit;
+        uint16_t selector;
+        uint8_t  type;
+        uint8_t  present, dpl, db, s, l, g, avl;
+        uint8_t  unusable;
+        uint8_t  padding;
+};
+
+struct kvm_dtable {
+        uint64_t base;
+        uint16_t limit;
+        uint16_t padding[3];
+};
+
+struct kvm_sregs2 {
+        /* out (KVM_GET_SREGS2) / in (KVM_SET_SREGS2) */
+        struct kvm_segment cs, ds, es, fs, gs, ss;
+        struct kvm_segment tr, ldt;
+        struct kvm_dtable gdt, idt;
+        uint64_t cr0, cr2, cr3, cr4, cr8;
+        uint64_t efer;
+        uint64_t apic_base;
+        uint64_t flags;
+        uint64_t pdptrs[4];
+};
+
+typedef struct FwCfgVmFwUpdateCpuState {
+        struct kvm_regs regs;
+        struct kvm_sregs2 s;
+} FwCfgVmFwUpdateCpuState;
+
 /* type of mapping requested */
 #define VMFW_TYPE_MAP_PRIVATE 0x00
 #define VMFW_TYPE_MAP_SHARED 0x01
@@ -141,6 +182,9 @@ assert_cc(sizeof(BootParams) == 4096);
 #        define __regparm0__
 #endif
 
+/* We load the FW at 1MiB in the rebooted VM because <1MiB is full of holes and dragons */
+#define MiB 0x100000
+
 static void fill_blob(
                 FwCfgVmFwUpdateBlob *blob, bool inCC, uint8_t blob_type, uint8_t map_type, void *ptr, size_t len) {
         EFI_PHYSICAL_ADDRESS DataBufferAddress = POINTER_TO_PHYSICAL_ADDRESS(ptr);
@@ -154,7 +198,10 @@ static void fill_blob(
         blob->blob_type = blob_type;
         blob->map_type = map_type;
         blob->paddr = DataBufferAddress;
-        blob->target_paddr = 0; // ???
+        if (blob_type == VMFW_TYPE_BLOB_FW)
+                blob->target_paddr = MiB;
+        else
+                blob->target_paddr = 0;
         blob->size = len;
 }
 
@@ -297,6 +344,35 @@ EFI_STATUS linux_exec_efi_fw_replace(
         }
         QemuFwCfgSelectItem(FwCfgItem);
         QemuFwCfgWriteBytes(cur_blob * sizeof(FwCfgVmFwUpdateBlob), blobs);
+
+        uint32_t fw_entry = MiB + firmware->iov_len - 0x10;
+        FwCfgVmFwUpdateCpuState cpu_state = {
+                .regs = {
+                        .rflags = 0x2,
+                        .rip = fw_entry,
+                },
+                .s = {
+                        .cs = { .limit = -1, .present = 1, .s = 1, .db = 1, .g = 1, .type = 0xb, .selector = 0x8, },
+                        .ds = { .limit = -1, .present = 1, .s = 1, .db = 1, .g = 1, .type = 0x3, .selector = 0x10 },
+                        .es = { .limit = -1, .present = 1, .s = 1, .db = 1, .g = 1, .type = 0x3, .selector = 0x10 },
+                        .fs = { .limit = -1, .present = 1, .s = 1, .db = 1, .g = 1, .type = 0x3, .selector = 0x10 },
+                        .gs = { .limit = -1, .present = 1, .s = 1, .db = 1, .g = 1, .type = 0x3, .selector = 0x10 },
+                        .ss = { .limit = -1, .present = 1, .s = 1, .db = 1, .g = 1, .type = 0x3, .selector = 0x10 },
+                        .tr = { .limit = -1, .present = 1, .type = 11 },
+                        .ldt = { .limit = -1, .present = 1, .type = 2 },
+                        .gdt = { .limit = -1, },
+                        .idt = { .limit = -1, },
+                        .cr0 = 0x33,
+                },
+        };
+
+        if (QemuFwCfgFindFile("etc/vmfwupdate-cpu", &FwCfgItem, &FwCfgSize) != EFI_SUCCESS) {
+                return log_error_status(EFI_LOAD_ERROR, "Could not find etc/vmfwupdate-cpu.");
+        }
+        QemuFwCfgSelectItem(FwCfgItem);
+        QemuFwCfgWriteBytes(sizeof(cpu_state), &cpu_state);
+
+        /* Trigger reboot via fwupdate */
 
         if (QemuFwCfgFindFile("etc/fwupdate-control", &FwCfgItem, &FwCfgSize) != EFI_SUCCESS) {
                 return log_error_status(EFI_LOAD_ERROR, "Could not write to etc/fwupdate-control.");
