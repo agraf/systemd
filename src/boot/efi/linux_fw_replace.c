@@ -177,7 +177,7 @@ EFI_STATUS linux_exec_efi_fw_replace(
         pe_kernel_info(kernel->iov_base, &compat_address, &kernel_size_in_memory);
 
         if (kernel->iov_len < sizeof(BootParams))
-                return EFI_LOAD_ERROR;
+                return log_error_status(EFI_LOAD_ERROR, "Invalid kernel image.");
 
         const BootParams *image_params = (const BootParams *) kernel->iov_base;
         if (image_params->hdr.header != SETUP_MAGIC || image_params->hdr.boot_flag != BOOT_FLAG_MAGIC)
@@ -293,17 +293,17 @@ EFI_STATUS linux_exec_efi_fw_replace(
         FIRMWARE_CONFIG_ITEM FwCfgItem;
         size_t FwCfgSize;
         if (QemuFwCfgFindFile("etc/vmfwupdate-blob", &FwCfgItem, &FwCfgSize) != EFI_SUCCESS) {
-                return EFI_LOAD_ERROR;
+                return log_error_status(EFI_LOAD_ERROR, "Could not write to etc/vmfwupdate-blob.");
         }
         QemuFwCfgSelectItem(FwCfgItem);
         QemuFwCfgWriteBytes(cur_blob * sizeof(FwCfgVmFwUpdateBlob), blobs);
 
         if (QemuFwCfgFindFile("etc/fwupdate-control", &FwCfgItem, &FwCfgSize) != EFI_SUCCESS) {
-                return EFI_LOAD_ERROR;
+                return log_error_status(EFI_LOAD_ERROR, "Could not write to etc/fwupdate-control.");
         }
         QemuFwCfgSelectItem(FwCfgItem);
         char cmd = 't';
         QemuFwCfgWriteBytes(1, &cmd);
 
-        return EFI_LOAD_ERROR;
+        return log_error_status(EFI_LOAD_ERROR, "fwupdate-control reset did not take effect.");
 }
