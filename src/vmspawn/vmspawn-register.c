@@ -16,6 +16,8 @@
 #include "vmspawn-register.h"
 #include "varlink-util.h"
 
+#define STDIN_FILENO 0
+
 int register_machine(
                 sd_bus *bus,
                 const char *machine_name,
