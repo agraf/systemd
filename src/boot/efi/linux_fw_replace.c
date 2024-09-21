@@ -207,10 +207,10 @@ EFI_STATUS linux_exec_efi_fw_replace(
         if (POINTER_TO_PHYSICAL_ADDRESS(kernel->iov_base) + kernel->iov_len > UINT32_MAX ||
             kernel_size_in_memory > kernel->iov_len) {
                 linux_relocated = xmalloc_pages(
-                                AllocateMaxAddress,
+                                AllocateAddress,
                                 EfiLoaderCode,
                                 EFI_SIZE_TO_PAGES(MAX(kernel_size_in_memory, kernel->iov_len)),
-                                UINT32_MAX);
+                                32 * 1024 * 1024);
                 linux_buffer = memcpy(
                                 PHYSICAL_ADDRESS_TO_POINTER(linux_relocated.addr),
                                 kernel->iov_base,
@@ -225,10 +225,10 @@ EFI_STATUS linux_exec_efi_fw_replace(
         void *initrd_buffer;
         if (!can_4g && POINTER_TO_PHYSICAL_ADDRESS(initrd->iov_base) + initrd->iov_len > UINT32_MAX) {
                 initrd_relocated = xmalloc_pages(
-                                AllocateMaxAddress,
+                                AllocateAddress,
                                 EfiLoaderData,
                                 EFI_SIZE_TO_PAGES(initrd->iov_len),
-                                UINT32_MAX);
+                                129 * 1024 * 1024);
                 initrd_buffer = memcpy(
                                 PHYSICAL_ADDRESS_TO_POINTER(initrd_relocated.addr),
                                 initrd->iov_base,
@@ -270,13 +270,15 @@ EFI_STATUS linux_exec_efi_fw_replace(
                 size_t len = MIN(strlen16(cmdline), image_params->hdr.cmdline_size);
 
                 cmdline_pages = xmalloc_pages(
-                                can_4g ? AllocateAnyPages : AllocateMaxAddress,
+                                AllocateAddress, //can_4g ? AllocateAnyPages : AllocateMaxAddress,
                                 EfiLoaderData,
                                 EFI_SIZE_TO_PAGES(len + 1),
-                                CMDLINE_PTR_MAX);
+                                128 * 1024 * 1024);
 
                 /* Convert cmdline to ASCII. */
                 char *cmdline8 = PHYSICAL_ADDRESS_TO_POINTER(cmdline_pages.addr);
+                memset(cmdline8, 0, EFI_SIZE_TO_PAGES(len + 1));
+
                 for (size_t i = 0; i < len; i++)
                         cmdline8[i] = cmdline[i] <= 0x7E ? cmdline[i] : ' ';
                 cmdline8[len] = '\0';
